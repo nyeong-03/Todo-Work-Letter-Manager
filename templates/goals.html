@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}내 목표 · 기회 챙김{% endblock %}
+{% block content %}
+  <h1>내 목표</h1>
+
+  <section class="card">
+    <h2>새 목표 추가</h2>
+    <form method="post" action="{{ url_for('goals.add') }}" class="stacked-form">
+      <label>목표 이름
+        <input type="text" name="title" required placeholder="예: 컴퓨터활용능력 1급 취득">
+      </label>
+      <label>분야 (선택)
+        <input type="text" name="field" placeholder="예: 자격증">
+      </label>
+      <label>목표 날짜 (선택)
+        <input type="date" name="target_date">
+      </label>
+      <label>메모 (선택)
+        <textarea name="memo" rows="2"></textarea>
+      </label>
+      <button type="submit" class="btn-primary">목표 추가</button>
+    </form>
+  </section>
+
+  {% if not goals %}
+    <p class="empty">아직 등록된 목표가 없어요. 위에서 첫 목표를 추가해 보세요.</p>
+  {% endif %}
+
+  {% for entry in goals %}
+    <article class="card">
+      <header>
+        <strong>{{ entry.goal.title }}</strong>
+        {% if entry.goal.field %}<span class="tag">{{ entry.goal.field }}</span>{% endif %}
+        {% if entry.goal.target_date %}<span class="tag muted">목표일 {{ entry.goal.target_date }}</span>{% endif %}
+      </header>
+      {% if entry.goal.memo %}<p class="summary">{{ entry.goal.memo }}</p>{% endif %}
+      <p class="meta">
+        연결된 뉴스레터 {{ entry.newsletter_count }}건 ·
+        연결된 일정 {{ entry.schedule_total }}건 중 {{ entry.schedule_done }}건 완료
+      </p>
+
+      <details>
+        <summary>수정 / 삭제</summary>
+        <form method="post" action="{{ url_for('goals.update', goal_id=entry.goal.id) }}" class="stacked-form">
+          <label>목표 이름
+            <input type="text" name="title" value="{{ entry.goal.title }}" required>
+          </label>
+          <label>분야
+            <input type="text" name="field" value="{{ entry.goal.field or '' }}">
+          </label>
+          <label>목표 날짜
+            <input type="date" name="target_date" value="{{ entry.goal.target_date or '' }}">
+          </label>
+          <label>메모
+            <textarea name="memo" rows="2">{{ entry.goal.memo or '' }}</textarea>
+          </label>
+          <button type="submit" class="btn-secondary">저장</button>
+        </form>
+        <form method="post" action="{{ url_for('goals.delete', goal_id=entry.goal.id) }}" onsubmit="return confirm('이 목표를 삭제할까요? 연결된 뉴스레터/일정은 연결만 해제돼요.');">
+          <button type="submit" class="btn-danger">목표 삭제</button>
+        </form>
+      </details>
+    </article>
+  {% endfor %}
+{% endblock %}

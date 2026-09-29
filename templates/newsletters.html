@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}뉴스레터 · 기회 챙김{% endblock %}
+{% block content %}
+  <h1>뉴스레터</h1>
+
+  <section class="card">
+    <h2>Gmail 연동</h2>
+    {% if gmail_account %}
+      <p>
+        <strong>{{ gmail_account.email }}</strong> 연결됨
+        {% if gmail_account.last_synced_at %}
+          · 마지막 가져오기: {{ gmail_account.last_synced_at }}
+        {% endif %}
+      </p>
+      <form method="post" action="{{ url_for('gmail.sync') }}" class="inline-form">
+        <label>최근
+          <select name="days">
+            <option value="3">3일</option>
+            <option value="7" selected>7일</option>
+            <option value="30">30일</option>
+            <option value="90">90일</option>
+          </select>
+          이내 메일 가져오기
+        </label>
+        <button type="submit" class="btn-primary">지금 가져오기</button>
+      </form>
+      <form method="post" action="{{ url_for('gmail.disconnect') }}" class="inline-form" onsubmit="return confirm('Gmail 연결을 해제할까요?');">
+        <label><input type="checkbox" name="delete_imported"> 가져온 뉴스레터도 함께 삭제</label>
+        <button type="submit" class="btn-secondary">연결 해제</button>
+      </form>
+    {% else %}
+      <p>Gmail을 연결하면 받은 뉴스레터를 자동으로 가져와 분류·요약해요. 읽기 전용 권한만 사용하고, 메일 원문은 저장하지 않아요.</p>
+      <a href="{{ url_for('gmail.connect') }}" class="btn-primary">Gmail 연결하기</a>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>뉴스레터 직접 추가</h2>
+    <form method="post" action="{{ url_for('newsletters.add') }}" class="stacked-form">
+      <label>제목
+        <input type="text" name="title" required placeholder="예: 2026 하반기 자격증 시험 일정 안내">
+      </label>
+      <label>보낸 곳 (선택)
+        <input type="text" name="sender" placeholder="예: notice@q-net.or.kr">
+      </label>
+      <label>본문 붙여넣기
+        <textarea name="body" rows="4" placeholder="뉴스레터 본문을 붙여넣으면 자동으로 분류·요약해요."></textarea>
+      </label>
+      <button type="submit" class="btn-primary">추가하기</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <form method="get" class="filter-form">
+      <input type="text" name="q" value="{{ search }}" placeholder="검색어 (제목, 요약, 키워드)">
+      <select name="category">
+        <option value="">전체 카테고리</option>
+        {% for category in categories %}
+          <option value="{{ category }}" {{ "selected" if category == selected_category }}>{{ category }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-secondary">검색</button>
+    </form>
+
+    {% if not newsletters %}
+      <p class="empty">조건에 맞는 뉴스레터가 없어요.</p>
+    {% endif %}
+
+    {% for item in newsletters %}
+      <article class="newsletter-item">
+        <header>
+          <span class="tag">{{ item.category }}</span>
+          <span class="tag muted">{{ item.source }}</span>
+          <span class="tag {{ item.status|status_class }}">{{ item.status }}</span>
+          <strong>{{ item.title }}</strong>
+        </header>
+        <p class="meta">
+          {{ item.sender or '보낸 사람 정보 없음' }} · 받은 날짜: {{ item.received_date or '알 수 없음' }}
+          {% if item.deadline %} · 마감: {{ item.deadline }}{% endif %}
+          {% if item.source_link %} · <a href="{{ item.source_link }}" target="_blank" rel="noopener">Gmail에서 원문 보기</a>{% endif %}
+        </p>
+        <p class="summary">{{ item.summary }}</p>
+        {% if item.topics %}<p class="meta">키워드: {{ item.topics }}</p>{% endif %}
+
+        <details>
+          <summary>수정 / 연결 / 일정으로 옮기기</summary>
+
+          <form method="post" action="{{ url_for('newsletters.update', newsletter_id=item.id) }}" class="stacked-form">
+            <label>카테고리
+              <select name="category">
+                {% for category in categories %}
+                  <option value="{{ category }}" {{ "selected" if category == item.category }}>{{ category }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>요약 (직접 수정 가능)
+              <textarea name="summary" rows="2">{{ item.summary }}</textarea>
+            </label>
+            <label>상태
+              <select name="status">
+                <option value="새 소식" {{ "selected" if item.status == "새 소식" }}>새 소식</option>
+                <option value="확인함" {{ "selected" if item.status == "확인함" }}>확인함</option>
+                <option value="보관함" {{ "selected" if item.status == "보관함" }}>보관함</option>
+              </select>
+            </label>
+            <label>연결된 목표
+              <select name="goal_id">
+                <option value="">연결 안 함</option>
+                {% for goal in goals %}
+                  <option value="{{ goal.id }}" {{ "selected" if item.goal_id == goal.id }}>{{ goal.title }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit" class="btn-secondary">저장</button>
+          </form>
+
+          <div class="inline-form">
+            {% if item.deadline and item.deadline != "날짜 확인 필요" %}
+              <form method="post" action="{{ url_for('newsletters.to_schedule', newsletter_id=item.id) }}">
+                <button type="submit" class="btn-secondary">마감일을 일정으로 옮기기</button>
+              </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('newsletters.delete', newsletter_id=item.id) }}" onsubmit="return confirm('이 뉴스레터를 삭제할까요?');">
+              <button type="submit" class="btn-danger">삭제</button>
+            </form>
+          </div>
+        </details>
+      </article>
+    {% endfor %}
+  </section>
+{% endblock %}

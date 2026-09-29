@@ -1,0 +1,12 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local data (SQLite DB holds the Gmail token + your own data)
+data/*
+!data/.gitkeep
