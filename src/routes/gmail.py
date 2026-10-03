@@ -21,12 +21,13 @@ bp = Blueprint("gmail", __name__, url_prefix="/gmail")
 def connect():
     """Step 1: send the user to Google's consent screen."""
     try:
-        auth_url, state = build_auth_url()
+        auth_url, state, code_verifier = build_auth_url()
     except GmailNotConfigured as error:
         flash(str(error), "error")
         return redirect(url_for("newsletters.index"))
 
     session["gmail_oauth_state"] = state
+    session["gmail_code_verifier"] = code_verifier
     return redirect(auth_url)
 
 
@@ -43,8 +44,10 @@ def callback():
         flash("Google로부터 인증 코드를 받지 못했습니다.", "error")
         return redirect(url_for("newsletters.index"))
 
+    code_verifier = session.pop("gmail_code_verifier", None)
+
     try:
-        credentials = exchange_code_for_credentials(code)
+        credentials = exchange_code_for_credentials(code, code_verifier=code_verifier)
         email = get_user_email(credentials)
         db = get_db()
         save_credentials(db, email, credentials)

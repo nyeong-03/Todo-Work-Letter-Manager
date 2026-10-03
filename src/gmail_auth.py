@@ -54,8 +54,28 @@ def _import_flow():
     return Flow
 
 
-def build_auth_url() -> tuple[str, str]:
-    """Return (consent_screen_url, state) to start the OAuth flow."""
+def _import_build():
+    try:
+        from googleapiclient.discovery import build
+    except ImportError as error:  # pragma: no cover - exercised only without deps installed
+        raise GmailNotConfigured(
+            "Gmail 연동 패키지가 설치되어 있지 않습니다. "
+            "'pip install -r requirements.txt'를 실행해 주세요."
+        ) from error
+    return build
+
+
+def build_auth_url() -> tuple[str, str, str]:
+    """Return (consent_screen_url, state, code_verifier).
+
+    google-auth-oauthlib enables PKCE by default: it generates a random
+    code_verifier and sends a hash of it (code_challenge) to Google. Google
+    later checks the *original* code_verifier at the token-exchange step, so
+    we must hand it back to the caller to store (in the Flask session) and
+    reuse in exchange_code_for_credentials() -- a fresh Flow object built
+    later has no memory of it otherwise, which is what caused the
+    "Missing code verifier" error.
+    """
     Flow = _import_flow()
     flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
     flow.redirect_uri = _require_env("GOOGLE_REDIRECT_URI")
@@ -64,14 +84,21 @@ def build_auth_url() -> tuple[str, str]:
         include_granted_scopes="true",
         prompt="consent",            # forces a refresh_token even on repeat connects
     )
-    return auth_url, state
+    return auth_url, state, flow.code_verifier
 
 
-def exchange_code_for_credentials(code: str):
-    """Exchange the ?code=... callback param for real OAuth credentials."""
+def exchange_code_for_credentials(code: str, code_verifier: str | None = None):
+    """Exchange the ?code=... callback param for real OAuth credentials.
+
+    code_verifier must be the same value build_auth_url() returned for this
+    login attempt (see the PKCE note above) -- pass it through from the
+    session, or token exchange will fail with 'Missing code verifier'.
+    """
     Flow = _import_flow()
     flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
     flow.redirect_uri = _require_env("GOOGLE_REDIRECT_URI")
+    if code_verifier:
+        flow.code_verifier = code_verifier
     flow.fetch_token(code=code)
     return flow.credentials
 
@@ -127,16 +154,19 @@ def load_credentials(db):
 
 
 def get_user_email(credentials) -> str:
-    """Ask Google who this token belongs to (id token / userinfo endpoint)."""
-    import requests  # only used here; small dependency already needed by Flask ecosystem
+    """Ask Gmail itself who this token belongs to.
 
-    response = requests.get(
-        "https://www.googleapis.com/oauth2/v2/userinfo",
-        headers={"Authorization": f"Bearer {credentials.token}"},
-        timeout=10,
-    )
-    response.raise_for_status()
-    return response.json().get("email", "알 수 없음")
+    We deliberately do NOT call Google's separate /oauth2/v2/userinfo
+    endpoint here: that endpoint needs its own 'email'/'profile' scope,
+    which we don't request (we only ask for gmail.readonly, per the
+    "read-only only" requirement). Gmail API's own users().getProfile()
+    call returns the account's email address and is already covered by
+    the gmail.readonly scope we do have.
+    """
+    build = _import_build()
+    service = build("gmail", "v1", credentials=credentials)
+    profile = service.users().getProfile(userId="me").execute()
+    return profile.get("emailAddress", "알 수 없음")
 
 
 def update_last_synced(db) -> None:
